@@ -50,7 +50,7 @@ class Tempest implements vscode.Pseudoterminal {
 	open(): void {
 		this.writeEmitter.fire('Welcome to Tempest Terminal!\r\n');
 		this.writeEmitter.fire('You can run Rust programs via a cloud server here...\r\n');
-		this.writeEmitter.fire('tempest> ');
+		this.writeEmitter.fire(`\x1b[36mtempest\x1b[0m \x1b[90m>\x1b[0m `);
 	}
 	close(): void {}
 
@@ -98,6 +98,19 @@ class Tempest implements vscode.Pseudoterminal {
 		}
 	}
 
+	private colours = {
+		reset: '\x1b[0m',
+		red: '\x1b[31m',
+    	brightRed: '\x1b[91m',
+		green: '\x1b[32m',
+	    brightGreen: '\x1b[92m',
+		yellow: '\x1b[33m',
+		blue: '\x1b[34m',
+		cyan: '\x1b[36m',
+		grey: '\x1b[90m',
+		bold: '\x1b[1m'
+	};
+
 	private async execute(command: string){
 		switch (command) {
 			case 'run':
@@ -106,14 +119,14 @@ class Tempest implements vscode.Pseudoterminal {
 					let run_res = await this.request_execute(file.value, "debug");
 					if (run_res.ok) {
 						if (run_res.value.stderr) {
-							this.writeEmitter.fire(run_res.value.stderr.replace(/\r?\n/g, '\r\n'));
+							this.writeEmitter.fire(`${this.colouriseOutput(run_res.value.stderr.replace(/\r?\n/g, '\r\n'))}`);
 						}
-						this.writeEmitter.fire(run_res.value.stdout.replace(/\r?\n/g, '\r\n'));
-						if (!run_res.value.success) {
-							this.writeEmitter.fire(`Execution failed: ${run_res.value.exitDetail.replace(/\r?\n/g, '\r\n')}\r\n`);
-						}
+						this.writeEmitter.fire(this.colouriseOutput(run_res.value.stdout.replace(/\r?\n/g, '\r\n')));
+						// if (!run_res.value.success) {
+						// 	this.writeEmitter.fire(`Execution failed: ${this.colouriseOutput(run_res.value.exitDetail.replace(/\r?\n/g, '\r\n'))}\r\n`);
+						// }
 					} else {
-						this.writeEmitter.fire(`Error: ${run_res.error}`);
+						this.writeEmitter.fire(`${this.colours.red}${this.colours.bold}Error:${this.colours.reset} ${run_res.error}`);
 					}
 				} else {
 					this.writeEmitter.fire(file.error);
@@ -126,13 +139,38 @@ class Tempest implements vscode.Pseudoterminal {
 				break;
 		}
 	}
+	private colouriseOutput(output: string): string {
+		return output.split(/\r?\n/).map(line => {
+			let res = line;
+			res = res.replace(/^(\s*)(Compiling|Finished|Running)\b/, (_, indent = '', word = '') => {
+				return `${indent}${this.colours.green}${this.colours.bold}${word}${this.colours.reset}`;
+			});
+			res = res.replace(/\b(warning)(:)/gi, (_, word = '', colon = '') => { 
+				return `${this.colours.yellow}${this.colours.bold}${word}${this.colours.reset}${colon}`;
+			});
+			res = res.replace(/\b(error[^:]*)(:)/gi, (_, word = '', colon = '') => {
+				return `${this.colours.brightRed}${this.colours.bold}${word}${this.colours.reset}${colon}`;
+			});
+			res = res.replace(/^(\s*)(-->\s*)([^:\s]+)(:.*)/, (_, indent = '', arrow = '', file = '', loc = '') => {
+				return `${indent}${this.colours.cyan}${arrow}${this.colours.reset}${file}${loc}`;
+			});
+			res = res.replace(/^(\s*)(\d* *[|=])( *-+.*)?([^\^]*)$/, (_, indent = '', pipe = '', dashes = '', end = '') => {
+				return `${indent}${this.colours.cyan}${pipe}${dashes}${this.colours.reset}${end}`;
+			});
+			res = res.replace(/^(\s*)(\d* *[|=])( *)(\^*)(.*)$/, (_, indent = '', pipe = '', gap = '', arrows = '', other='') => {
+				return `${indent}${this.colours.cyan}${pipe}${this.colours.reset}${gap}${this.colours.yellow}${arrows}${other}`;
+			});
+
+			return res;	
+		}).join('\r\n');
+	}
 
 	async handleInput(data: string) {
 		if (data === '\r') {
 			this.writeEmitter.fire('\r\n');
 			await this.execute(this.input.trim());
 			this.input = '';
-			this.writeEmitter.fire('tempest> ');
+			this.writeEmitter.fire(`${this.colours.cyan}tempest${this.colours.reset} ${this.colours.grey}>${this.colours.reset} `);
 		} else if (data === '\u007f') {
 			if (this.input.length > 0) {
 				this.input = this.input.slice(0, -1);
