@@ -1,2 +1,2 @@
 # Tempest
-A rust cloud compiler
+A rust cloud compiler, with vscode extension frontend
