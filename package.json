@@ -1,11 +1,13 @@
 {
-  "name": "tempest",
-  "displayName": "Tempest",
-  "description": "A Rust cloud-based compiler",
-  "version": "0.0.1",
+  "name": "rust-tempest",
+  "displayName": "RustTempest",
+  "description": "A pseudo-terminal wrapper for Rust Playground, allowing execution of Rust files without rustup installed.",
+  "repository": "https://github.com/MadAvidCoder/Tempest",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.146.0"
   },
+  "publisher": "tempest-playground",
   "categories": [
     "Other"
   ],
@@ -15,7 +17,7 @@
     "commands": [
       {
         "command": "tempest.start",
-        "title": "Tempest: Start Terminal"
+        "title": "RustTempest: Start Terminal"
       }
     ]
   },
@@ -36,7 +38,9 @@
     "@vscode/test-electron": "^3.0.0",
     "eslint": "^10.5.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.1"
+    "typescript-eslint": "^8.61.1",
+    "webpack": "^5.112.2",
+    "webpack-cli": "^7.3.1"
   },
   "overrides": {
     "diff": "^8.0.4",
