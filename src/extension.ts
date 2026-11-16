@@ -51,7 +51,7 @@ class Tempest implements vscode.Pseudoterminal {
         this.writeEmitter.fire(
             "You can run Rust programs via a cloud server here...\r\n",
         );
-        this.writeEmitter.fire(`\x1b[36mtempest\x1b[0m \x1b[90m>\x1b[0m `);
+        this.draw_prompt();
     }
     close(): void {}
 
@@ -88,6 +88,7 @@ class Tempest implements vscode.Pseudoterminal {
                     Accept: "application/json",
                 },
                 body: JSON.stringify(params),
+                signal: AbortSignal.timeout(30000),
             });
             if (!resp.ok) {
                 return { ok: false, error: `HTTP error: ${resp.status}` };
@@ -118,15 +119,19 @@ class Tempest implements vscode.Pseudoterminal {
         bold: "\x1b[1m",
     };
 
-    private async execute(command: string) {
+    private async execute(input: string) {
+        let [command, ...args] = input.split(/\s+/);
+
         switch (command) {
             case "run": {
                 let file = this.getActiveFile();
                 if (file.ok) {
-                    let run_res = await this.request_execute(
-                        file.value,
-                        "debug",
-                    );
+                    let mode = args.some((arg) =>
+                        ["release", "--release", "-r"].includes(arg),
+                    )
+                        ? "release"
+                        : "debug";
+                    let run_res = await this.request_execute(file.value, mode);
                     if (run_res.ok) {
                         if (run_res.value.stderr) {
                             this.writeEmitter.fire(
@@ -214,8 +219,19 @@ class Tempest implements vscode.Pseudoterminal {
             .join("\r\n");
     }
 
+    private draw_prompt() {
+        this.writeEmitter.fire(
+            `${this.colours.cyan}tempest${this.colours.reset} ${this.colours.grey}>${this.colours.reset} `,
+        );
+    }
+
     async handleInput(data: string) {
-        if (data === "\r") {
+        if (data === "\x03") {
+            this.input = "";
+            this.writeEmitter.fire("^C\r\n");
+            this.draw_prompt();
+            return;
+        } else if (data === "\r") {
             this.writeEmitter.fire("\r\n");
             await this.execute(this.input.trim());
             if (this.input.trim().length > 0) {
@@ -223,9 +239,7 @@ class Tempest implements vscode.Pseudoterminal {
             }
             this.historyIndex = this.history.length;
             this.input = "";
-            this.writeEmitter.fire(
-                `${this.colours.cyan}tempest${this.colours.reset} ${this.colours.grey}>${this.colours.reset} `,
-            );
+            this.draw_prompt();
         } else if (data === "\u007f") {
             if (this.input.length > 0) {
                 this.input = this.input.slice(0, -1);
