@@ -69,6 +69,7 @@ class Tempest implements vscode.Pseudoterminal {
     close(): void {
         this.socket?.close();
         this.socket = undefined;
+        this.is_running = false;
         this.socket_status = SocketStatus.Disconnected;
     }
 
@@ -158,14 +159,18 @@ class Tempest implements vscode.Pseudoterminal {
                     case "output/execute/wsExecuteEnd":
                         this.is_running = false;
                         this.draw_prompt();
+                        break;
+                    default:
+                        console.log(`Unexpected websocket message: ${data}`);
+                        break;
                 }
-            } catch (error) {}
+            } catch (error) {
+                console.log(`Unexpected websocket message: ${error}`);
+            }
         }
     }
     private handle_socket_error(error: string) {
-        this.writeEmitter.fire(
-            `${this.colours.red}WebSocket error: ${error}${this.colours.reset}\r\n`,
-        );
+        console.log(`Websocket error: ${error}`);
     }
 
     private is_connecting(): boolean {
@@ -209,7 +214,9 @@ class Tempest implements vscode.Pseudoterminal {
                     this.socket.on("close", () => {
                         this.socket_status = SocketStatus.Disconnected;
                         this.writeEmitter.fire("WebSocket closed.\r\n");
+                        this.is_running = false;
                         this.socket = undefined;
+                        this.draw_prompt();
                     });
                     this.socket.on("message", (data) => {
                         this.handle_socket_message(data);
