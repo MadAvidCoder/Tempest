@@ -71,6 +71,8 @@ class Tempest implements vscode.Pseudoterminal {
         this.socket = undefined;
         this.is_running = false;
         this.socket_status = SocketStatus.Disconnected;
+        this.writeEmitter.dispose();
+        this.closeEmitter.dispose();
     }
 
     private getActiveFile(): Result<string, string> {
