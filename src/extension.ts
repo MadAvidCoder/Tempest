@@ -157,7 +157,6 @@ class Tempest implements vscode.Pseudoterminal {
                 break;
             default:
                 this.writeEmitter.fire(`Command not found: ${command}\r\n`);
-                this.writeEmitter.fire("\r\n");
                 break;
         }
     }
@@ -219,8 +218,10 @@ class Tempest implements vscode.Pseudoterminal {
         if (data === "\r") {
             this.writeEmitter.fire("\r\n");
             await this.execute(this.input.trim());
-            this.history.push(this.input);
-            this.historyIndex++;
+            if (this.input.trim().length > 0) {
+                this.history.push(this.input);
+            }
+            this.historyIndex = this.history.length;
             this.input = "";
             this.writeEmitter.fire(
                 `${this.colours.cyan}tempest${this.colours.reset} ${this.colours.grey}>${this.colours.reset} `,
@@ -244,19 +245,21 @@ class Tempest implements vscode.Pseudoterminal {
         if (this.history.length === 0) {
             return;
         }
-        if (dir === "down") {
-            if (this.historyIndex < this.history.length - 2) {
-                this.historyIndex++;
-            }
-        } else {
+        if (dir === "up") {
             if (this.historyIndex > 0) {
                 this.historyIndex--;
+            }
+        } else {
+            if (this.historyIndex < this.history.length - 1) {
+                this.historyIndex++;
             } else {
-                this.historyIndex = -1;
+                this.historyIndex = this.history.length;
+                this.input = "";
             }
         }
-        if (this.historyIndex !== -1) {
-            this.input = this.history[this.historyIndex + 1];
+
+        if (this.historyIndex < this.history.length) {
+            this.input = this.history[this.historyIndex];
         }
         this.writeEmitter.fire("\r\x1b[2K");
         this.writeEmitter.fire(
