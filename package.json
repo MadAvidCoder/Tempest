@@ -3,7 +3,7 @@
   "displayName": "RustTempest",
   "description": "A pseudo-terminal wrapper for Rust Playground, allowing execution of Rust files without rustup installed.",
   "repository": "https://github.com/MadAvidCoder/Tempest",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "engines": {
     "vscode": "^1.146.0"
   },
