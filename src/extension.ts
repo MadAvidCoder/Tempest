@@ -42,6 +42,12 @@ enum SocketStatus {
     Connected,
 }
 
+interface RustFile {
+    path: string;
+    uri: vscode.Uri;
+    content: string;
+}
+
 class Tempest implements vscode.Pseudoterminal {
     private writeEmitter = new vscode.EventEmitter<string>();
     readonly onDidWrite = this.writeEmitter.event;
@@ -75,16 +81,188 @@ class Tempest implements vscode.Pseudoterminal {
         this.closeEmitter.dispose();
     }
 
-    private getActiveFile(): Result<string, string> {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
+    private async getActiveFile(): Promise<Result<string, string>> {
+        const files = await vscode.workspace.findFiles(
+            "**/*.rs",
+            "**/{.git,target}/**",
+        );
+        interface ModuleNode {
+            contents: string[];
+            children: Map<string, ModuleNode>;
+        }
+
+        const root: ModuleNode = {
+            contents: [],
+            children: new Map(),
+        };
+
+        for (const uri of files) {
+            const path = vscode.workspace.asRelativePath(uri, false);
+            const parts = path.split("/");
+            const content = Buffer.from(
+                await vscode.workspace.fs.readFile(uri),
+            ).toString("utf8");
+
+            const filename = parts.pop()!;
+
+            let current = root;
+            for (const part of parts) {
+                if (!current.children.has(part)) {
+                    current.children.set(part, {
+                        contents: [],
+                        children: new Map<string, any>(),
+                    });
+                }
+                current = current.children.get(part)!;
+            }
+            if (filename === "mod.rs") {
+                current.contents.push(content);
+            } else {
+                const modName = filename.replace(/\.rs$/, "");
+                if (!current.children.has(modName)) {
+                    current.children.set(modName, {
+                        contents: [],
+                        children: new Map(),
+                    });
+                }
+
+                current.children.get(modName)!.contents.push(content);
+            }
+        }
+
+        const find_modules = (source: string) => {
+            const matches: {
+                name: string;
+                start: number;
+                end: number;
+            }[] = [];
+
+            let i = 0;
+            let depth = 0;
+
+            while (i < source.length) {
+                if (source.startsWith("//", i)) {
+                    i += 2;
+                    while (i < source.length && source[i] !== "\n") {
+                        i++;
+                    }
+                    continue;
+                }
+                if (source.startsWith("/*", i)) {
+                    i += 2;
+                    let nested = 1;
+
+                    while (i < source.length && nested > 0) {
+                        if (source.startsWith("/*", i)) {
+                            nested++;
+                            i += 2;
+                        } else if (source.startsWith("*/", i)) {
+                            nested--;
+                            i += 2;
+                        } else {
+                            i++;
+                        }
+                    }
+
+                    continue;
+                }
+                if (source[i] === '"') {
+                    i++;
+                    while (i < source.length) {
+                        if (source[i] === "\\") {
+                            i += 2;
+                        } else if (source[i] === '"') {
+                            i++;
+                            break;
+                        } else {
+                            i++;
+                        }
+                    }
+                    continue;
+                }
+                if (source[i] === "{") {
+                    depth++;
+                    i++;
+                    continue;
+                }
+
+                if (source[i] === "}") {
+                    depth--;
+                    i++;
+                    continue;
+                }
+
+                if (
+                    depth === 0 &&
+                    source.startsWith("mod", i) &&
+                    !/[a-zA-Z0-9_]/.test(source[i - 1] ?? "") &&
+                    !/[a-zA-Z0-9_]/.test(source[i + 3] ?? "")
+                ) {
+                    const start = i;
+                    i += 3;
+
+                    while (/\s/.test(source[i] ?? "")) {
+                        i++;
+                    }
+
+                    const nameStart = i;
+
+                    while (/[a-zA-Z0-9_]/.test(source[i] ?? "")) {
+                        i++;
+                    }
+
+                    const name = source.slice(nameStart, i);
+
+                    while (/\s/.test(source[i] ?? "")) {
+                        i++;
+                    }
+
+                    if (name && source[i] === ";") {
+                        matches.push({
+                            name,
+                            start,
+                            end: i + 1,
+                        });
+
+                        i++;
+                        continue;
+                    }
+                }
+                i++;
+            }
+            return matches;
+        };
+
+        const generate = (node: ModuleNode, source: string): string => {
+            const matches = find_modules(source);
+
+            for (const match of matches.reverse()) {
+                const child = node.children.get(match.name);
+                if (!child) {
+                    continue;
+                }
+                let childContent = child.contents.join("\n\n");
+                childContent = generate(child, childContent);
+                const replacement = `mod ${match.name} {\n${childContent}\n}`;
+
+                source =
+                    source.slice(0, match.start) +
+                    replacement +
+                    source.slice(match.end);
+            }
+            return source;
+        };
+        const main = root.children.get("src")?.children.get("main");
+        const src = root.children.get("src");
+
+        if (!main || !src) {
             return {
                 ok: false,
-                error: "No active editor. Please open a file to run.",
-            };
+                error: "Could not find src/main.rs",
+            } as Result<string, string>;
         }
-        const fileText = editor.document.getText();
-        return { ok: true, value: fileText };
+
+        return { ok: true, value: generate(src, main.contents.join("\n\n")) };
     }
 
     private async request_execute(
@@ -259,8 +437,19 @@ class Tempest implements vscode.Pseudoterminal {
 
                 break;
             }
+            case "print": {
+                let file = await this.getActiveFile();
+                if (file.ok) {
+                    this.writeEmitter.fire(file.value);
+                    this.writeEmitter.fire("\n");
+                } else {
+                    this.writeEmitter.fire(file.error);
+                    this.writeEmitter.fire("\n");
+                }
+                break;
+            }
             case "run": {
-                let file = this.getActiveFile();
+                let file = await this.getActiveFile();
                 if (args.includes("--socket")) {
                     if (this.socket_status !== SocketStatus.Connected) {
                         this.writeEmitter.fire(
