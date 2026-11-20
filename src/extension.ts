@@ -252,17 +252,64 @@ class Tempest implements vscode.Pseudoterminal {
             }
             return source;
         };
-        const main = root.children.get("src")?.children.get("main");
         const src = root.children.get("src");
 
-        if (!main || !src) {
+        if (!src) {
             return {
                 ok: false,
-                error: "Could not find src/main.rs",
-            } as Result<string, string>;
+                error: "Could not find src",
+            };
+        }
+        const main = src.children.get("main");
+        if (!main) {
+            return {
+                ok: false,
+                error: "No main.rs found",
+            };
+        }
+        const mcode = generate(src, main.contents.join("\n\n"));
+        let code = mcode;
+        const lib = src.children.get("lib");
+        if (lib) {
+            const toml = vscode.workspace.workspaceFolders?.[0].uri.with({
+                path:
+                    vscode.workspace.workspaceFolders[0].uri.path +
+                    "/Cargo.toml",
+            });
+            if (!toml) {
+                return {
+                    ok: false,
+                    error: "No cargo.toml found",
+                };
+            }
+            const tom_cont = Buffer.from(
+                await vscode.workspace.fs.readFile(toml),
+            ).toString("utf-8");
+            let c_name = tom_cont
+                .match(/^\s*\[package\]([\s\S]*?)(?=^\[|$(?![\s\S]))/m)?.[1]
+                ?.match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1];
+            let l_name = tom_cont
+                .match(/^\s*\[lib\]([\s\S]*?)(?=^\[|$(?![\s\S]))/m)?.[1]
+                ?.match(/^\s*name\s*=\s*["']([^"']+)["']/m)?.[1];
+            const crateName = (l_name ? l_name : c_name ? c_name : "").replace(
+                /-/g,
+                "_",
+            );
+            if (crateName === "") {
+                return {
+                    ok: false,
+                    error: "Failed to get lib name",
+                };
+            }
+
+            const lcode = generate(src, lib.contents.join("\n\n")).replace(
+                /crate::/g,
+                `crate::${crateName}::`,
+            );
+            code = `mod ${crateName} {\n${lcode}\n}\n${mcode}`;
         }
 
-        return { ok: true, value: generate(src, main.contents.join("\n\n")) };
+        return { ok: true, value: code };
     }
 
     private async request_execute(
@@ -437,17 +484,17 @@ class Tempest implements vscode.Pseudoterminal {
 
                 break;
             }
-            case "print": {
-                let file = await this.getActiveFile();
-                if (file.ok) {
-                    this.writeEmitter.fire(file.value);
-                    this.writeEmitter.fire("\n");
-                } else {
-                    this.writeEmitter.fire(file.error);
-                    this.writeEmitter.fire("\n");
-                }
-                break;
-            }
+            // case "print": {
+            //     let file = await this.getActiveFile();
+            //     if (file.ok) {
+            //         this.writeEmitter.fire(file.value);
+            //         this.writeEmitter.fire("\n");
+            //     } else {
+            //         this.writeEmitter.fire(file.error);
+            //         this.writeEmitter.fire("\n");
+            //     }
+            //     break;
+            // }
             case "run": {
                 let file = await this.getActiveFile();
                 if (args.includes("--socket")) {
