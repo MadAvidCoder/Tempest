@@ -1,4 +1,7 @@
 # RustTempest
+
+https://github.com/user-attachments/assets/9b6ccc94-966c-4c53-9bf5-934ba19441c4
+
 RustTempest is a lightweight vscode extension that enables using the [Rust Playround](https://play.rust-lang.org/) from VSCode. This enables cloud compilation and testing rust code on devices which don't yet have rustc installed.
 
 ## Features
